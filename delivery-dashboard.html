@@ -59,6 +59,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-check-compat.js"></script>
 
 <script>
     const firebaseConfig = {
@@ -71,6 +72,14 @@
         measurementId: "G-E27MPW12XR"
     };
     firebase.initializeApp(firebaseConfig);
+
+    // App Check — replace placeholder with your real reCAPTCHA v3 site key
+    // from Firebase Console → App Check. Harmless no-op until you do.
+    if (typeof firebase.appCheck === "function") {
+        const appCheck = firebase.appCheck();
+        appCheck.activate("6LfxO4EtAAAAAN-1jA3MKguh9CVXfqv1oMQVBrmP", true);
+    }
+
     const db = firebase.firestore();
     const auth = firebase.auth();
 
@@ -140,7 +149,24 @@
     function startOrdersListener() {
         if (ordersUnsubscribe) ordersUnsubscribe();
 
-        ordersUnsubscribe = db.collection("orders").orderBy("createdAt", "desc").onSnapshot(snapshot => {
+        // Admin still needs the full order stream (for the rider filter
+        // dropdown). A non-admin partner's query is scoped server-side to
+        // only their own assigned orders — this matches the Firestore
+        // Security Rules, which reject a partner reading orders assigned
+        // to someone else. Filtering only in the browser (the old
+        // behaviour) meant a partner's client briefly held every order in
+        // the system, including other riders' customer names/addresses.
+        let query = db.collection("orders").orderBy("createdAt", "desc");
+        if (!isAdmin) {
+            // Note: Firestore will prompt you (in the console, with a link)
+            // to create a composite index the first time this runs — that's
+            // expected for a where() + orderBy() combo. Just click the link.
+            query = db.collection("orders")
+                .where("assignedPartner", "==", currentPartnerName)
+                .orderBy("createdAt", "desc");
+        }
+
+        ordersUnsubscribe = query.onSnapshot(snapshot => {
             const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             const deliveryOrders = orders.filter(o => {
@@ -152,7 +178,7 @@
                         return isNotFinished && o.assignedPartner === selectedRiderFilter;
                     }
                 } else {
-                    return isNotFinished && o.assignedPartner === currentPartnerName;
+                    return isNotFinished;
                 }
             });
 

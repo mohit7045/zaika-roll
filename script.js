@@ -13,6 +13,17 @@ const firebaseConfig = {
 
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
+
+// App Check — proves requests are coming from your real website, not a
+// script/bot hitting Firestore directly. Replace the placeholder below with
+// your own reCAPTCHA v3 site key from Firebase Console → App Check.
+// Until you paste a real key here, this line does nothing harmful — just
+// leave it as-is if you haven't set up App Check yet.
+if (typeof firebase.appCheck === "function") {
+    const appCheck = firebase.appCheck();
+    appCheck.activate("6LfxO4EtAAAAAN-1jA3MKguh9CVXfqv1oMQVBrmP", true);
+}
+
 const db = firebase.firestore();
 
 // =====================================================
@@ -273,6 +284,8 @@ function changeQuantity(productId, change) {
     if (!item) return;
 
     item.quantity += change;
+    const MAX_QTY_PER_ITEM = 20;
+    if (item.quantity > MAX_QTY_PER_ITEM) item.quantity = MAX_QTY_PER_ITEM;
     if (item.quantity <= 0) {
         cart = cart.filter(item => item.id !== productId);
     }
@@ -285,6 +298,7 @@ function changeQuantity(productId, change) {
 function openCheckout() {
     if (cart.length === 0) return alert("Your cart is empty.");
     closeCart();
+    checkoutOpenedAt = Date.now(); // used to detect bot-speed instant submissions
     document.getElementById("checkoutModal").style.display = "flex";
 }
 
@@ -293,54 +307,174 @@ function closeCheckout() {
 }
 
 // =====================================================
+// INPUT VALIDATION HELPERS
+// =====================================================
+function validateCheckoutInputs(name, phone, address) {
+    if (!name || name.trim().length === 0) return "Please enter your name.";
+    if (name.trim().length > 80) return "Name is too long.";
+
+    // Indian mobile numbers: 10 digits, starting 6-9
+    const cleanedPhone = phone.replace(/\D/g, "");
+    if (!/^[6-9]\d{9}$/.test(cleanedPhone)) return "Please enter a valid 10-digit mobile number.";
+
+    if (!address || address.trim().length < 8) return "Please enter a complete delivery address.";
+    if (address.trim().length > 300) return "Address is too long.";
+
+    return null; // no error
+}
+
+// =====================================================
 // PLACE ORDER (TO FIREBASE)
 // =====================================================
+let lastOrderSubmitTime = 0;
+let checkoutOpenedAt = 0;
+const ORDER_SUBMIT_COOLDOWN_MS = 8000; // basic client-side anti-spam; real limiting is App Check + Cloud Function quotas
+const MIN_HUMAN_FILL_TIME_MS = 2500; // a real person can't fill+submit the form faster than this
+
 document.getElementById("checkoutForm").addEventListener("submit", async function(event) {
     event.preventDefault();
 
     const submitBtn = this.querySelector('button[type="submit"]');
+    const errorBox = document.getElementById("checkoutError");
+
+    // Honeypot: if this hidden field got filled, it's almost certainly a bot.
+    // Silently pretend success so the bot doesn't learn to skip this field.
+    const honeypot = document.getElementById("websiteHP");
+    if (honeypot && honeypot.value.trim() !== "") {
+        console.warn("Bot submission blocked (honeypot).");
+        cart = [];
+        saveCart();
+        updateCartCount();
+        closeCheckout();
+        return;
+    }
+
+    // A human takes at least a couple seconds to fill this form.
+    if (checkoutOpenedAt && (Date.now() - checkoutOpenedAt) < MIN_HUMAN_FILL_TIME_MS) {
+        if (errorBox) errorBox.textContent = "Please try again.";
+        return;
+    }
+
+    if (cart.length === 0) {
+        if (errorBox) errorBox.textContent = "Your cart is empty.";
+        return;
+    }
+
+    // Basic client-side rate limiting: block rapid repeat submissions.
+    const now = Date.now();
+    if (now - lastOrderSubmitTime < ORDER_SUBMIT_COOLDOWN_MS) {
+        if (errorBox) errorBox.textContent = "Please wait a few seconds before placing another order.";
+        return;
+    }
+
+    const name = document.getElementById("customerName").value;
+    const phone = document.getElementById("customerPhone").value.replace(/\D/g, "");
+    const address = document.getElementById("customerAddress").value;
+    const landmark = document.getElementById("landmark").value.trim().slice(0, 200);
+    const payment = document.getElementById("paymentMethod").value;
+
+    const validationError = validateCheckoutInputs(name, phone, address);
+    if (validationError) {
+        if (errorBox) errorBox.textContent = validationError;
+        else alert(validationError);
+        return;
+    }
+
     submitBtn.textContent = "Placing Order...";
     submitBtn.disabled = true;
+    if (errorBox) errorBox.textContent = "";
 
+    // IMPORTANT: prices are re-looked-up from `menuItems` (freshly loaded
+    // from Firestore this session) instead of trusting whatever price sits
+    // in the cart/localStorage. This raises the bar against casual price
+    // tampering, but it is NOT a full fix — someone editing live JS in
+    // DevTools can still override it. The real fix is to route this
+    // through the `placeOrder` Cloud Function (functions/index.js), which
+    // recomputes price server-side where the browser can't touch it.
+    // Once that function is deployed, replace the block below with the
+    // callable-function version (see PLACE_ORDER_VIA_CLOUD_FUNCTION below).
     let total = 0;
-    cart.forEach(item => total += item.price * item.quantity);
+    const verifiedItems = [];
+    for (const cartItem of cart) {
+        const liveProduct = menuItems.find(p => p.id === cartItem.id);
+        if (!liveProduct || !liveProduct.available) {
+            if (errorBox) errorBox.textContent = `${cartItem.name} is no longer available. Please remove it from your cart.`;
+            submitBtn.textContent = "Place Order";
+            submitBtn.disabled = false;
+            return;
+        }
+        const lineTotal = liveProduct.price * cartItem.quantity;
+        total += lineTotal;
+        verifiedItems.push({
+            id: liveProduct.id,
+            name: liveProduct.name,
+            price: liveProduct.price,
+            quantity: cartItem.quantity
+        });
+    }
 
     const orderNumber = "FH" + Math.floor(1000 + Math.random() * 9000);
 
     const orderData = {
         orderNumber: orderNumber,
-        customerName: document.getElementById("customerName").value,
-        phone: document.getElementById("customerPhone").value,
-        address: document.getElementById("customerAddress").value,
-        landmark: document.getElementById("landmark").value,
-        payment: document.getElementById("paymentMethod").value,
-        items: [...cart],
+        customerName: name.trim(),
+        phone: phone,
+        address: address.trim(),
+        landmark: landmark,
+        payment: payment,
+        items: verifiedItems,
         total: total,
         status: "Pending",
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(), 
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         dateString: new Date().toLocaleString()
     };
 
     try {
         await db.collection("orders").add(orderData);
-        
+
+        lastOrderSubmitTime = Date.now();
         cart = [];
         saveCart();
         updateCartCount();
         closeCheckout();
-        
+
         document.getElementById("orderNumber").textContent = "Order #" + orderNumber;
         document.getElementById("successModal").style.display = "flex";
 
     } catch (error) {
         console.error("Error placing order: ", error);
-        alert("Failed to place order. Please try again.");
+        if (errorBox) errorBox.textContent = "Failed to place order. Please try again.";
+        else alert("Failed to place order. Please try again.");
     } finally {
         submitBtn.textContent = "Place Order";
         submitBtn.disabled = false;
         this.reset();
     }
 });
+
+// =====================================================
+// PLACE_ORDER_VIA_CLOUD_FUNCTION (optional, strongest option)
+// =====================================================
+// After deploying functions/index.js (requires Firebase Blaze plan):
+//   1. Add this script tag in index.html, after the other Firebase SDKs:
+//      <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-functions-compat.js"></script>
+//   2. Replace the `await db.collection("orders").add(orderData);` line
+//      above with:
+//
+//      const placeOrderFn = firebase.functions().httpsCallable("placeOrder");
+//      const result = await placeOrderFn({
+//          customerName: name.trim(),
+//          phone: phone,
+//          address: address.trim(),
+//          landmark: landmark,
+//          payment: payment,
+//          items: cart.map(i => ({ id: i.id, quantity: i.quantity }))
+//      });
+//      const orderNumber = result.data.orderNumber;
+//
+// This sends only product IDs + quantities to the server — price is
+// looked up and the total is computed entirely server-side, so it can no
+// longer be tampered with from the browser at all.
 
 function closeSuccess() {
     document.getElementById("successModal").style.display = "none";

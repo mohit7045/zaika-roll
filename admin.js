@@ -12,6 +12,14 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+
+// App Check — replace placeholder with your real reCAPTCHA v3 site key
+// from Firebase Console → App Check. Harmless no-op until you do.
+if (typeof firebase.appCheck === "function") {
+    const appCheck = firebase.appCheck();
+    appCheck.activate("6LfxO4EtAAAAAN-1jA3MKguh9CVXfqv1oMQVBrmP", true);
+}
+
 const db = firebase.firestore();
 const auth = firebase.auth(); // Auth Service Initialize Kiya
 

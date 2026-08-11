@@ -27,6 +27,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-check-compat.js"></script>
 
 <script>
     // Firebase Setup
@@ -40,14 +41,19 @@
         measurementId: "G-E27MPW12XR"
     };
     firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
 
-    // Check if already logged in
-    if (localStorage.getItem("deliveryLoggedIn") === "true") {
-        window.location.href = "delivery-dashboard.html";
+    // App Check — replace placeholder with your real reCAPTCHA v3 site key
+    // from Firebase Console → App Check. Harmless no-op until you do.
+    if (typeof firebase.appCheck === "function") {
+        const appCheck = firebase.appCheck();
+        appCheck.activate("6LfxO4EtAAAAAN-1jA3MKguh9CVXfqv1oMQVBrmP", true);
     }
 
+    const db = firebase.firestore();
     const auth = firebase.auth();
+
+    // Real "already logged in" check — driven by Firebase Auth state,
+    // not a spoofable localStorage flag.
 
     auth.onAuthStateChanged(user => {
         if (user) {

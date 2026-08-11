@@ -339,6 +339,13 @@
 
             <form id="checkoutForm">
 
+                <!-- Honeypot: real users never see or fill this. Simple bots that
+                     auto-fill every input on a page usually fill it, and we quietly
+                     reject the order if it's non-empty. Not bulletproof against a
+                     targeted attacker, but stops generic spam bots for free. -->
+                <input type="text" id="websiteHP" name="website" autocomplete="off" tabindex="-1"
+                    style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;">
+
                 <input
                     type="text"
                     id="customerName"
@@ -372,6 +379,8 @@
                     </option>
 
                 </select>
+
+                <p id="checkoutError" style="color: #dc2626; margin-top: 10px; font-size: 14px;"></p>
 
                 <button
                     type="submit"
@@ -417,6 +426,7 @@
 
      <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-check-compat.js"></script>
     <script src="script.js"></script>
 
 </body>
