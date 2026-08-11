@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+    <title>Zaika Kathi Roll | Admin Panel</title>
+
+    <link rel="stylesheet" href="admin.css">
+
+</head>
+
+
+<body class="admin-body">
+
+
+<!-- =====================================================
+     LOGIN SCREEN
+===================================================== -->
+
+<div id="loginScreen" class="admin-login">
+
+    <div class="login-box">
+    <h2>Zaika Admin</h2>
+    <p>Login to manage your restaurant</p>
+
+    <!-- id="adminEmail" aur type="email" kar do -->
+    <input type="email" id="adminEmail" placeholder="Admin Email" autocomplete="email">
+    <input type="password" id="adminPassword" placeholder="Password" autocomplete="current-password">
+
+    <button onclick="adminLogin()">Login</button>
+    <p id="loginError"></p>
+
+    <a href="index.html" class="back-website">← Back to Website</a>
+</div>
+
+
+</div>
+
+
+
+<!-- =====================================================
+     ADMIN PANEL
+===================================================== -->
+
+<div
+    id="adminPanel"
+    class="admin-layout"
+    style="display:none;">
+
+
+    <!-- =================================================
+         SIDEBAR
+    ================================================= -->
+
+    <aside class="sidebar">
+
+        <div class="admin-logo">
+
+            Zaika<span>Roll</span>
+
+        </div>
+
+
+        <p class="admin-label">
+            ADMIN PANEL
+        </p>
+
+
+        <button
+            class="sidebar-btn active"
+            onclick="showSection('dashboard', this)">
+
+            Dashboard
+
+        </button>
+
+
+        <button
+            class="sidebar-btn"
+            onclick="showSection('orders', this)">
+
+            New Orders
+
+            <span id="sidebarPending">
+                0
+            </span>
+
+        </button>
+
+
+        <button
+            class="sidebar-btn"
+            onclick="showSection('history', this)">
+
+            Order History
+
+        </button>
+
+
+        <button
+            class="sidebar-btn"
+            onclick="showSection('products', this)">
+
+            Menu Management
+
+        </button>
+
+
+
+
+        <button
+    class="sidebar-btn"
+    onclick="showSection('deliveryPartners', this)">
+    Delivery Partners
+       </button>
+
+
+       <div class="sidebar-bottom">
+            <a href="index.html">View Website</a>
+            <a href="delivery.html" target="_blank">Delivery Portal</a>
+            <button onclick="openChangePasswordModal()" style="margin-bottom: 5px;">Change Password</button>
+            <button onclick="logout()">Logout</button>
+        </div>
+
+    </aside>
+
+
+
+    <!-- =================================================
+         MAIN CONTENT
+    ================================================= -->
+
+    <main class="admin-main">
+
+
+        <!-- =================================================
+             DASHBOARD
+        ================================================= -->
+
+        <section
+            id="dashboardSection"
+            class="admin-section">
+
+
+<div class="admin-topbar">
+    <div>
+        <p class="admin-small">RESTAURANT MANAGEMENT</p>
+        <h1>Dashboard</h1>
+    </div>
+
+    <div style="display: flex; gap: 15px; align-items: center;">
+        <button id="soundToggleBtn" onclick="toggleSoundAlert()" style="padding: 8px 14px; border: 1px solid #ddd; border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; font-weight: 600;">
+            🔔 Sound: ON
+        </button>
+        <button onclick="playNewOrderSound()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; font-weight: 600;">
+    🔊 Test Sound
+</button>
+        <div class="admin-date">
+            <span id="currentDate"></span>
+        </div>
+        <button onclick="openAnalyticsModal()" style="padding: 9px 16px; background: #ff4d00; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+    📊 Item Analytics
+</button>
+    </div>
+</div>
+
+
+
+            <!-- STAT CARDS -->
+
+            <div class="stats-grid">
+
+
+                <div class="stat-card">
+
+                    <div>
+
+                        <p>
+                            Total Orders
+                        </p>
+
+                        <h2 id="totalOrders">
+                            0
+                        </h2>
+
+                    </div>
+
+                    <span class="stat-icon">
+                        #
+                    </span>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div>
+
+                        <p>
+                            Pending Orders
+                        </p>
+
+                        <h2 id="pendingOrders">
+                            0
+                        </h2>
+
+                    </div>
+
+                    <span class="stat-icon">
+                        !
+                    </span>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div>
+
+                        <p>
+                            Completed
+                        </p>
+
+                        <h2 id="completedOrders">
+                            0
+                        </h2>
+
+                    </div>
+
+                    <span class="stat-icon">
+                        ✓
+                    </span>
+
+                </div>
+
+
+                <div class="stat-card">
+
+                    <div>
+
+                        <p>
+                            Revenue
+                        </p>
+
+                        <h2 id="totalRevenue">
+                            ₹0
+                        </h2>
+
+                    </div>
+
+                    <span class="stat-icon">
+                        ₹
+                    </span>
+
+                </div>
+
+
+            </div>
+
+
+
+            <!-- RECENT ORDERS -->
+
+            <div class="admin-card">
+
+                <div class="card-header">
+
+                    <div>
+
+                        <h2>
+                            Recent Orders
+                        </h2>
+
+                        <p>
+                            Latest customer orders
+                        </p>
+
+                    </div>
+
+
+                    <button
+                        onclick="showSectionByName('orders')">
+
+                        View All
+
+                    </button>
+
+                </div>
+
+
+                <div id="recentOrders">
+
+                    <p class="empty-text">
+                        No orders yet.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+
+        <!-- =================================================
+             NEW ORDERS
+        ================================================= -->
+
+        <section
+            id="ordersSection"
+            class="admin-section"
+            style="display:none;">
+
+
+            <div class="admin-topbar">
+
+                <div>
+
+                    <p class="admin-small">
+                        ORDER MANAGEMENT
+                    </p>
+
+                    <h1>
+                        New Orders
+                    </h1>
+
+                </div>
+
+
+                <button
+                    class="refresh-btn"
+                    onclick="loadOrders()">
+
+                    Refresh
+
+                </button>
+
+            </div>
+
+
+            <div class="admin-card">
+
+                <div id="ordersContainer">
+
+                    <p class="empty-text">
+                        No orders found.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+
+        <!-- =================================================
+             ORDER HISTORY
+        ================================================= -->
+
+      <!-- =================================================
+             ORDER HISTORY
+        ================================================= -->
+        <section id="historySection" class="admin-section" style="display:none;">
+
+            <div class="admin-topbar">
+                <div>
+                    <p class="admin-small">COMPLETED & PAST ORDERS</p>
+                    <h1>Order History</h1>
+                </div>
+            </div>
+
+            <div class="admin-card">
+
+                <!-- ⬇️ YAHAN PASTE KARO (admin-card ke thik andar) ⬇️ -->
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #eee;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <label style="font-size: 12px; font-weight: bold; color: #555; display: block; margin-bottom: 4px;">🔍 Search Customer / Phone / Order #:</label>
+                        <input type="text" id="historySearchInput" oninput="filterOrdersBySearch()" placeholder="Type phone, name or #FH1234..." style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; outline: none; font-family: inherit;">
+                    </div>
+
+                    <div>
+                        <label style="font-size: 12px; font-weight: bold; color: #555; display: block; margin-bottom: 4px;">📅 Filter by Date:</label>
+                        <input type="date" id="historyDateFilter" onchange="filterOrdersByDate()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; outline: none; font-family: inherit;">
+                    </div>
+                    
+                    <button onclick="resetDateFilter()" style="margin-top: 18px; padding: 9px 15px; background: #eee; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                        Reset
+                    </button>
+
+                    <div id="dateStatsSummary" style="margin-left: auto; display: flex; gap: 20px; font-size: 14px; background: #faf6f0; padding: 10px 18px; border-radius: 8px;">
+                        <div>Filtered Orders: <strong id="filteredOrderCount" style="color: #ff4d00;">0</strong></div>
+                        <div>Revenue: <strong id="filteredRevenue" style="color: #27ae60;">₹0</strong></div>
+                    </div>
+                </div>
+                <!-- ⬆️ PASTE HERE ⬆️ -->
+
+                <div id="historyContainer">
+                    <p class="empty-text">No order history.</p>
+                </div>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =================================================
+             MENU MANAGEMENT
+        ================================================= -->
+
+        <section
+            id="productsSection"
+            class="admin-section"
+            style="display:none;">
+
+
+            <div class="admin-topbar">
+
+                <div>
+
+                    <p class="admin-small">
+                        FOOD MANAGEMENT
+                    </p>
+
+                    <h1>
+                        Menu Management
+                    </h1>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- ADD ITEM -->
+
+            <div class="admin-card add-product-card">
+
+                <div class="card-header">
+
+                    <div>
+
+                        <h2>
+                            Add New Food Item
+                        </h2>
+
+                        <p>
+                            Add a new item to your menu
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="product-form">
+
+
+                    <div class="form-group">
+
+                        <label>
+                            Item Name
+                        </label>
+
+                        <input
+                            type="text"
+                            id="productName"
+                            placeholder="Example: Chicken Roll">
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>
+                            Price
+                        </label>
+
+                        <input
+                            type="number"
+                            id="productPrice"
+                            placeholder="120">
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label>
+                            Category
+                        </label>
+
+                        <select id="productCategory">
+
+                            <option value="Egg Roll">
+                                Egg Roll
+                            </option>
+
+                            <option value="Chicken Roll">
+                                Chicken Roll
+                            </option>
+
+                            <option value="Paneer Roll">
+                                Paneer Roll
+                            </option>
+
+                            <option value="Veg Roll">
+                                Veg Roll
+                            </option>
+
+                            <option value="Shawarma">
+                                Shawarma
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+<div class="form-group">
+    <label>Upload Food Image</label>
+    <input type="file" id="productImage" accept="image/*">
+</div>
+
+
+                    <div
+                        class="form-group full-width">
+
+                        <label>
+                            Description
+                        </label>
+
+                        <textarea
+                            id="productDescription"
+                            placeholder="Describe your food item..."></textarea>
+
+                    </div>
+
+
+                    <button
+                        class="primary-btn"
+                        onclick="addProduct()">
+
+                        + Add Food Item
+
+                    </button>
+
+
+                </div>
+
+            </div>
+
+
+
+            <!-- PRODUCTS -->
+
+            <div class="admin-card">
+
+                <div class="card-header" style="flex-wrap: wrap; gap: 15px;">
+
+                    <div>
+
+                        <h2>
+                            Current Menu
+                        </h2>
+
+                        <p>
+                            Manage availability and food items
+                        </p>
+
+                    </div>
+
+                    <!-- Category Filter Buttons -->
+                    <div class="category-buttons" style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="edit-btn" onclick="filterAdminMenu('All', this)" style="background:#ff4d00; color:#fff;">All</button>
+                        <button class="edit-btn" onclick="filterAdminMenu('Egg Roll', this)">Egg Roll</button>
+                        <button class="edit-btn" onclick="filterAdminMenu('Chicken Roll', this)">Chicken Roll</button>
+                        <button class="edit-btn" onclick="filterAdminMenu('Paneer Roll', this)">Paneer Roll</button>
+                        <button class="edit-btn" onclick="filterAdminMenu('Veg Roll', this)">Veg Roll</button>
+                        <button class="edit-btn" onclick="filterAdminMenu('Shawarma', this)">Shawarma</button>
+                    </div>
+
+                </div>
+
+
+                <div id="productsContainer">
+
+                    <p class="empty-text">
+                        Loading menu...
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </section>
+
+
+        <!-- =================================================
+     DELIVERY PARTNERS MANAGEMENT
+================================================= -->
+<section
+    id="deliveryPartnersSection"
+    class="admin-section"
+    style="display:none;">
+
+    <div class="admin-topbar">
+        <div>
+            <p class="admin-small">FLEET MANAGEMENT</p>
+            <h1>Delivery Partners</h1>
+        </div>
+    </div>
+
+    <!-- ADD PARTNER FORM -->
+    <div class="admin-card add-product-card">
+        <div class="card-header">
+            <div>
+                <h2>Add New Delivery Partner</h2>
+                <p>Create login credentials for a delivery boy</p>
+            </div>
+        </div>
+
+        <div class="product-form">
+            <div class="form-group">
+                <label>Partner Name</label>
+                <input type="text" id="partnerName" placeholder="Example: Rahul Kumar">
+            </div>
+
+            <div class="form-group">
+                <label>Phone Number (Login ID)</label>
+                <input type="tel" id="partnerPhone" placeholder="9876543210">
+            </div>
+
+            <div class="form-group full-width">
+                <label>Password</label>
+                <input type="text" id="partnerPassword" placeholder="Create a password">
+            </div>
+
+            <button class="primary-btn" onclick="addDeliveryPartner()">
+                + Add Delivery Partner
+            </button>
+        </div>
+    </div>
+
+    <!-- PARTNERS LIST -->
+    <div class="admin-card">
+        <div class="card-header">
+            <div>
+                <h2>Active Partners</h2>
+                <p>Manage your delivery team</p>
+            </div>
+        </div>
+        <div id="partnersContainer">
+            <p class="empty-text">No delivery partners added yet.</p>
+        </div>
+    </div>
+</section>
+
+
+    </main>
+
+</div>
+
+
+
+<!-- =====================================================
+     ORDER DETAILS MODAL
+===================================================== -->
+
+<div
+    id="orderModal"
+    class="admin-modal">
+
+
+    <div class="order-modal-content">
+
+        <button
+            class="modal-close"
+            onclick="closeOrderModal()">
+
+            ×
+
+        </button>
+
+
+        <div id="orderDetails">
+
+        </div>
+
+
+
+        <!-- DELETE CONFIRMATION MODAL -->
+<div id="deleteConfirmModal" class="admin-modal">
+    <div class="order-modal-content" style="max-width: 400px; text-align: center; padding: 25px;">
+        <h3 style="margin-bottom: 10px; font-size: 20px;">Are you sure?</h3>
+        <p style="color: #666; margin-bottom: 20px; font-size: 14px;">Do you really want to delete this? This action cannot be undone.</p>
+        
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button onclick="closeDeleteModal()" style="background: #eee; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">Cancel</button>
+            <button id="confirmDeleteBtn" style="background: #c0392b; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600;">Yes, Delete</button>
+        </div>
+    </div>
+</div>
+    </div>
+
+</div>
+
+
+<!-- =====================================================
+     EDIT PRODUCT MODAL
+===================================================== -->
+
+<div id="editProductModal" class="admin-modal">
+    <div class="order-modal-content">
+        <button class="modal-close" onclick="closeEditProductModal()">×</button>
+        <h2 style="margin-bottom: 15px;">Edit Food Item</h2>
+        
+        <input type="hidden" id="editProductId">
+
+        <div class="product-form" style="grid-template-columns: 1fr;">
+            <div class="form-group">
+                <label>Item Name</label>
+                <input type="text" id="editProductName">
+            </div>
+
+            <div class="form-group">
+                <label>Price (₹)</label>
+                <input type="number" id="editProductPrice">
+            </div>
+
+            <div class="form-group">
+                <label>Category</label>
+                <select id="editProductCategory">
+                    <option value="Egg Roll">Egg Roll</option>
+                    <option value="Chicken Roll">Chicken Roll</option>
+                    <option value="Paneer Roll">Paneer Roll</option>
+                    <option value="Veg Roll">Veg Roll</option>
+                    <option value="Shawarma">Shawarma</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Change Image (Optional - Leave empty to keep existing)</label>
+                <input type="file" id="editProductImage" accept="image/*">
+            </div>
+
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="editProductDescription"></textarea>
+            </div>
+
+            <button class="primary-btn" id="saveEditBtn" onclick="saveProductEdit()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<!-- CHANGE PASSWORD MODAL -->
+<div id="changePasswordModal" class="admin-modal">
+    <div class="order-modal-content" style="max-width: 450px;">
+        <button class="modal-close" onclick="closeChangePasswordModal()">×</button>
+        <h2 style="margin-bottom: 8px;">Change Password</h2>
+        <p style="color: #777; font-size: 13px; margin-bottom: 20px;">Update your admin panel login password</p>
+
+        <div class="product-form" style="grid-template-columns: 1fr;">
+            <div class="form-group">
+                <label>Current Password</label>
+                <input type="password" id="currentAdminPassword" placeholder="Enter current password">
+            </div>
+
+            <div class="form-group">
+                <label>New Password</label>
+                <input type="password" id="newAdminPassword" placeholder="Minimum 6 characters">
+            </div>
+
+            <div class="form-group">
+                <label>Confirm New Password</label>
+                <input type="password" id="confirmAdminPassword" placeholder="Re-enter new password">
+            </div>
+
+            <p id="changePasswordError" style="color: red; font-size: 13px; display: none; margin-top: 5px;"></p>
+            <p id="changePasswordSuccess" style="color: green; font-size: 13px; display: none; margin-top: 5px;"></p>
+
+            <button class="primary-btn" id="savePasswordBtn" onclick="submitChangePassword()" style="margin-top: 10px;">
+                Update Password
+            </button>
+        </div>
+    </div>
+</div>
+<!-- BEST SELLING ITEMS ANALYTICS MODAL -->
+<div id="analyticsModal" class="admin-modal">
+    <div class="order-modal-content" style="max-width: 650px;">
+        <button class="modal-close" onclick="closeAnalyticsModal()">×</button>
+        <h2 style="margin-bottom: 4px;">🔥 Best Selling Food Items</h2>
+        <p style="color: #777; font-size: 13px; margin-bottom: 20px;">Item-wise sales breakdown from all completed orders</p>
+
+        <div id="topSellingItemsContainer">
+            <p class="empty-text">Loading item sales data...</p>
+        </div>
+    </div>
+</div>
+
+<!-- ================= FIREBASE SDKS ================= -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+
+<script src="admin.js"></script>
+
+</body>
+
+</html>

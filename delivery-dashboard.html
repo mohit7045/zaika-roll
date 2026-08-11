@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zaika Kathi Roll | Delivery Dashboard</title>
+    <link rel="stylesheet" href="delivery.css">
+</head>
+<body class="admin-body">
+
+<div class="admin-layout">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="admin-logo">Zaika<span>Roll</span></div>
+        <p class="admin-label">DELIVERY PORTAL</p>
+        <button class="sidebar-btn active">Active Orders</button>
+       <div class="sidebar-bottom">
+            <a href="page2.html" class="sidebar-link">Admin Panel</a>
+            <a href="index.html" class="sidebar-link">Back to Website</a>
+            <button onclick="deliveryLogout()" class="sidebar-logout-btn">Logout</button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="admin-main">
+        <div class="admin-section">
+            <div class="admin-topbar">
+                <div>
+                    <p class="admin-small">WELCOME BACK</p>
+                    <h1 id="partnerWelcomeName">Delivery Partner</h1>
+                </div>
+            </div>
+
+            <div class="admin-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 15px;">
+                    <div>
+                        <h2>Assigned & Ready Orders</h2>
+                        <p style="color: #777; font-size: 13px;">Update order status once picked up or delivered.</p>
+                    </div>
+
+                    <!-- ADMIN SPECIFIC RIDER FILTER DROPDOWN -->
+                    <div id="adminRiderFilterContainer" style="display: none; background: #faf6f0; padding: 8px 14px; border-radius: 8px; border: 1px solid #eee;">
+                        <label style="font-size: 12px; font-weight: bold; color: #555;">🚴 Select Rider:</label>
+                        <select id="adminRiderFilter" onchange="filterRiderOrders(this.value)" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; margin-left: 8px; font-family: inherit;">
+                            <option value="All">All Riders</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="deliveryOrdersContainer">
+                    <p class="empty-text">Loading orders...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyDpi0roEK4cAYRqqHJ2y1uT0fjdk4u_LM0",
+        authDomain: "foodhub-restaurant-22790.firebaseapp.com",
+        projectId: "foodhub-restaurant-22790",
+        storageBucket: "foodhub-restaurant-22790.firebasestorage.app",
+        messagingSenderId: "1016193457906",
+        appId: "1:1016193457906:web:6e6cbaa0980393e1befa6b",
+        measurementId: "G-E27MPW12XR"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    let currentPartnerName = "";
+    let isAdmin = false;
+    let selectedRiderFilter = "All";
+    let ordersUnsubscribe = null;
+
+    // Route Guard & Role Detection
+    auth.onAuthStateChanged(async (user) => {
+        if (!user) {
+            window.location.href = "delivery.html";
+            return;
+        }
+
+        if (user.email === "zaikaroll@admin.com") {
+            isAdmin = true;
+            document.getElementById("partnerWelcomeName").textContent = "Admin Control View";
+            document.getElementById("adminRiderFilterContainer").style.display = "block";
+            await loadRiderDropdown();
+        } else {
+            isAdmin = false;
+            document.getElementById("adminRiderFilterContainer").style.display = "none";
+            try {
+                const snapshot = await db.collection("deliveryPartners").where("email", "==", user.email).get();
+                if (!snapshot.empty) {
+                    currentPartnerName = snapshot.docs[0].data().name;
+                } else {
+                    currentPartnerName = user.email.split("@")[0];
+                }
+                document.getElementById("partnerWelcomeName").textContent = currentPartnerName;
+            } catch (err) {
+                console.error("User fetch error:", err);
+            }
+        }
+        
+        startOrdersListener();
+    });
+
+    async function loadRiderDropdown() {
+        try {
+            const snapshot = await db.collection("deliveryPartners").get();
+            const select = document.getElementById("adminRiderFilter");
+            select.innerHTML = `<option value="All">All Riders</option>`;
+            snapshot.forEach(doc => {
+                const partner = doc.data();
+                if (partner.name) {
+                    select.innerHTML += `<option value="${escapeHTML(partner.name)}">${escapeHTML(partner.name)}</option>`;
+                }
+            });
+        } catch (err) {
+            console.error("Error loading rider list:", err);
+        }
+    }
+
+    function filterRiderOrders(riderName) {
+        selectedRiderFilter = riderName;
+        startOrdersListener();
+    }
+
+    function deliveryLogout() {
+        auth.signOut().then(() => {
+            window.location.href = "delivery.html";
+        });
+    }
+
+    function startOrdersListener() {
+        if (ordersUnsubscribe) ordersUnsubscribe();
+
+        ordersUnsubscribe = db.collection("orders").orderBy("createdAt", "desc").onSnapshot(snapshot => {
+            const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            const deliveryOrders = orders.filter(o => {
+                const isNotFinished = o.status !== "Delivered" && o.status !== "Cancelled";
+                if (isAdmin) {
+                    if (selectedRiderFilter === "All") {
+                        return isNotFinished && o.assignedPartner;
+                    } else {
+                        return isNotFinished && o.assignedPartner === selectedRiderFilter;
+                    }
+                } else {
+                    return isNotFinished && o.assignedPartner === currentPartnerName;
+                }
+            });
+
+            const container = document.getElementById("deliveryOrdersContainer");
+
+            if (deliveryOrders.length === 0) {
+                const emptyMsg = isAdmin 
+                    ? (selectedRiderFilter === "All" ? "No active assigned orders right now." : `No active orders assigned to ${escapeHTML(selectedRiderFilter)}.`)
+                    : "Orders assigned to you by admin will appear here.";
+
+                container.innerHTML = `<div class="empty-state"><h3>No active orders</h3><p>${emptyMsg}</p></div>`;
+                return;
+            }
+
+            container.innerHTML = `<div class="orders-list">${deliveryOrders.map(order => `
+                <div class="detailed-order">
+                    <div class="order-header">
+                        <div>
+                            <span class="order-number">#${order.orderNumber}</span>
+                            <h3>${escapeHTML(order.customerName)}</h3>
+                            <p style="color:#ff4d00; font-weight:bold; font-size:13px; margin-top:3px;">🚴 Rider: ${escapeHTML(order.assignedPartner || "Unassigned")}</p>
+                        </div>
+                        <strong>₹${order.total}</strong>
+                    </div>
+                    <div class="order-info-grid">
+                        <div><small>PHONE</small><p><a href="tel:${order.phone}">${escapeHTML(order.phone)}</a></p></div>
+                        <div><small>PAYMENT</small><p>${order.payment}</p></div>
+                        <div style="grid-column: span 2;"><small>ADDRESS</small><p>${escapeHTML(order.address)} (${order.landmark ? escapeHTML(order.landmark) : "No landmark"})</p></div>
+                    </div>
+                    <div class="order-items">
+                        <h4>Items</h4>
+                        ${order.items.map(item => `
+                            <div class="order-item">
+                                <span>${escapeHTML(item.name)} × ${item.quantity}</span>
+                                <strong>₹${item.price * item.quantity}</strong>
+                            </div>
+                        `).join("")}
+                    </div>
+                    <div class="order-actions">
+                        <select onchange="updateDeliveryStatus('${order.id}', this.value)">
+                            <option value="Preparing" ${order.status === "Preparing" ? "selected" : ""}>Preparing</option>
+                            <option value="Ready" ${order.status === "Ready" ? "selected" : ""}>Ready</option>
+                            <option value="Out for Delivery" ${order.status === "Out for Delivery" ? "selected" : ""}>Out for Delivery</option>
+                            <option value="Delivered" ${order.status === "Delivered" ? "selected" : ""}>Delivered (Complete)</option>
+                        </select>
+                    </div>
+                </div>
+            `).join("")}</div>`;
+        });
+    }
+
+    async function updateDeliveryStatus(orderId, newStatus) {
+        try {
+            await db.collection("orders").doc(orderId).update({ status: newStatus });
+        } catch (error) {
+            console.error("Error updating status:", error);
+            alert("Failed to update status.");
+        }
+    }
+
+    function escapeHTML(text) {
+        const div = document.createElement("div");
+        div.textContent = text ?? "";
+        return div.innerHTML;
+    }
+</script>
+
+</body>
+</html>
