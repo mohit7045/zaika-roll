@@ -1,0 +1,133 @@
+rules_version = '2';
+
+// =====================================================================
+// ZAIKA KATHI ROLL — FIRESTORE SECURITY RULES
+// =====================================================================
+// Deploy this in: Firebase Console → Firestore Database → Rules
+// (or via `firebase deploy --only firestore:rules` if you use the CLI)
+//
+// This is the layer that ACTUALLY enforces "admin-only" / "partner-only"
+// access. The checks in admin.js / delivery-dashboard.html only hide UI —
+// they do nothing to stop someone from calling Firestore directly.
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------
+    // HELPERS
+    // ---------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // Mirrors the check already used in admin.js.
+      // NOTE: hardcoding an email is okay for a single-admin setup, but the
+      // more robust way is a Firebase custom claim (admin: true) set via a
+      // trusted server/Cloud Function. Swap this out if you set that up.
+      return isSignedIn() && request.auth.token.email == "zaikaroll@admin.com";
+    }
+
+    // Delivery partner documents are stored with doc ID == the partner's
+    // Firebase Auth UID (see admin.js: db.collection("deliveryPartners").doc(uid).set(...))
+    function partnerName() {
+      return get(/databases/$(database)/documents/deliveryPartners/$(request.auth.uid)).data.name;
+    }
+
+    function isAssignedPartner(order) {
+      return isSignedIn() && order.assignedPartner == partnerName();
+    }
+
+    // ---------------------------------------------------------------
+    // PRODUCTS (public menu)
+    // ---------------------------------------------------------------
+    match /products/{productId} {
+      allow read: if true; // menu must be publicly viewable, no login on site
+
+      allow create, update: if isAdmin()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 500
+        && request.resource.data.price is number
+        && request.resource.data.price > 0
+        && request.resource.data.price <= 10000
+        && request.resource.data.category is string
+        && request.resource.data.available is bool;
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // ORDERS
+    // ---------------------------------------------------------------
+    match /orders/{orderId} {
+
+      // Anyone (even signed-out customers) can place an order — but the
+      // payload shape/types/bounds are enforced here so junk or absurd
+      // data can't be written.
+      //
+      // IMPORTANT: this still cannot verify that `total` == sum(item price
+      // * qty) against the real product catalog, because Firestore Rules
+      // cannot loop over an array of unknown length. For full protection
+      // against price tampering, route order creation through the
+      // `placeOrder` Cloud Function in functions/index.js instead of a
+      // direct client write (see README).
+      allow create: if
+        request.resource.data.keys().hasOnly([
+          "orderNumber", "customerName", "phone", "address", "landmark",
+          "payment", "items", "total", "status", "createdAt", "dateString"
+        ])
+        && request.resource.data.orderNumber is string
+        && request.resource.data.customerName is string
+        && request.resource.data.customerName.size() > 0
+        && request.resource.data.customerName.size() <= 80
+        && request.resource.data.phone is string
+        && request.resource.data.phone.matches('^[0-9]{10}$')
+        && request.resource.data.address is string
+        && request.resource.data.address.size() > 0
+        && request.resource.data.address.size() <= 300
+        && request.resource.data.payment in ["COD", "UPI"]
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 30
+        && request.resource.data.total is number
+        && request.resource.data.total > 0
+        && request.resource.data.total <= 50000
+        && request.resource.data.status == "Pending";
+
+      // Only admin or the delivery partner this order is assigned to can
+      // read order details, and only they can update it — and only the
+      // fields that are supposed to change after creation.
+      allow read: if isAdmin() || isAssignedPartner(resource.data);
+
+      allow update: if (isAdmin() || isAssignedPartner(resource.data))
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(["status", "assignedPartner"])
+        && request.resource.data.status in
+             ["Pending", "Accepted", "Preparing", "Ready", "Out for Delivery", "Delivered", "Cancelled"];
+
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // DELIVERY PARTNERS
+    // ---------------------------------------------------------------
+    match /deliveryPartners/{partnerId} {
+      // Admin can list/read everyone (needed for the rider dropdown).
+      // A partner can only read their own document.
+      allow read: if isAdmin() || (isSignedIn() && resource.data.email == request.auth.token.email);
+
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // DEFAULT DENY — anything not explicitly matched above is blocked.
+    // ---------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

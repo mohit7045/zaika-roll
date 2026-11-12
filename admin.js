@@ -11,56 +11,63 @@ const firebaseConfig = {
     measurementId: "G-E27MPW12XR"
 };
 
-firebase.initializeApp(firebaseConfig);
-
-// App Check — replace placeholder with your real reCAPTCHA v3 site key
-// from Firebase Console → App Check. Harmless no-op until you do.
-if (typeof firebase.appCheck === "function") {
-    const appCheck = firebase.appCheck();
-    appCheck.activate("6LfxO4EtAAAAAN-1jA3MKguh9CVXfqv1oMQVBrmP", true);
+// Initialize Firebase only once
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
 }
 
 const db = firebase.firestore();
-const auth = firebase.auth(); // Auth Service Initialize Kiya
+const auth = firebase.auth();
 
 // =====================================================
-// AUTH STATE LISTENER (AUTO LOGIN / PROTECT DASHBOARD)
+// AUTH STATE LISTENER (AUTO LOGIN & PROTECT DASHBOARD)
 // =====================================================
 auth.onAuthStateChanged(user => {
-    // Check karo ki user logged in hai AUR woh admin hi hai
-    if (user && user.email === "zaikaroll@admin.com") {
-        document.getElementById("loginScreen").style.display = "none";
-        document.getElementById("adminPanel").style.display = "flex";
+    const loginScreen = document.getElementById("loginScreen");
+    const adminPanel = document.getElementById("adminPanel");
+
+    if (user && user.email && user.email.toLowerCase() === "zaikaroll@admin.com") {
+        if (loginScreen) loginScreen.style.display = "none";
+        if (adminPanel) adminPanel.style.display = "flex";
         updateDate();
         startRealTimeListeners();
     } else {
-        // Agar delivery partner admin panel kholne ki koshish kare toh logout kardo
-        if (user) auth.signOut();
-        document.getElementById("loginScreen").style.display = "flex";
-        document.getElementById("adminPanel").style.display = "none";
+        if (loginScreen) loginScreen.style.display = "flex";
+        if (adminPanel) adminPanel.style.display = "none";
     }
 });
 
 // =====================================================
-// ADMIN LOGIN & LOGOUT (FIREBASE AUTH)
+// ADMIN LOGIN & LOGOUT
 // =====================================================
 async function adminLogin() {
-    const email = document.getElementById("adminEmail").value.trim();
-    const password = document.getElementById("adminPassword").value;
+    const emailInput = document.getElementById("adminEmail");
+    const passwordInput = document.getElementById("adminPassword");
     const error = document.getElementById("loginError");
 
+    const email = emailInput ? emailInput.value.trim() : "";
+    const password = passwordInput ? passwordInput.value.trim() : "";
+
     if (!email || !password) {
-        error.textContent = "Please enter email and password.";
+        if (error) error.textContent = "Please enter email and password.";
         return;
     }
 
     try {
-        error.textContent = "Logging in...";
+        if (error) error.textContent = "Logging in...";
         await auth.signInWithEmailAndPassword(email, password);
-        error.textContent = "";
+        if (error) error.textContent = "";
     } catch (err) {
         console.error("Auth Error:", err);
-        error.textContent = "Invalid email or password.";
+        if (error) {
+            if (err.code === "auth/invalid-credential" || err.code === "auth/wrong-password") {
+                error.textContent = "Invalid email or password.";
+            } else if (err.code === "auth/requests-from-referer-null-are-blocked.") {
+                error.textContent = "Please run from Netlify or Localhost (not direct file).";
+            } else {
+                error.textContent = "Login failed: " + err.message;
+            }
+        }
     }
 }
 
@@ -73,19 +80,17 @@ async function logout() {
 }
 
 // =====================================================
-// GLOBAL VARIABLES
+// GLOBAL VARIABLES & AUDIO NOTIFICATIONS
 // =====================================================
 let globalOrders = [];
 let globalProducts = [];
 let globalPartners = [];
 let selectedAdminCategory = "All";
 
-
 let soundEnabled = true;
 let isFirstLoad = true;
 let previousOrderCount = 0;
 
-// Web Audio API se Order Notification Chime create karo (Bina external audio file ke)
 function playNewOrderSound() {
     if (!soundEnabled) return;
     try {
@@ -93,8 +98,8 @@ function playNewOrderSound() {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.type = "sine";
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5 note
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15); // A5 note
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15);
         gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.8);
         osc.connect(gain);
@@ -102,7 +107,7 @@ function playNewOrderSound() {
         osc.start();
         osc.stop(audioCtx.currentTime + 0.8);
     } catch (e) {
-        console.log("Audio alert playback blocked or unsupported", e);
+        console.log("Audio notification blocked or unsupported:", e);
     }
 }
 
@@ -111,21 +116,14 @@ function toggleSoundAlert() {
     const btn = document.getElementById("soundToggleBtn");
     if (btn) btn.textContent = soundEnabled ? "🔔 Sound: ON" : "🔕 Sound: OFF";
 }
-// =====================================================
-// SHOW ADMIN PANEL & REAL-TIME LISTENERS
-// =====================================================
-function showAdminPanel() {
-    document.getElementById("loginScreen").style.display = "none";
-    document.getElementById("adminPanel").style.display = "flex";
-    updateDate();
-    startRealTimeListeners();
-}
 
+// =====================================================
+// REAL-TIME FIRESTORE LISTENERS
+// =====================================================
 function startRealTimeListeners() {
     db.collection("orders").orderBy("createdAt", "desc").onSnapshot(snapshot => {
         const newOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-        // Detect if a new order came in
         if (!isFirstLoad && newOrders.length > previousOrderCount) {
             playNewOrderSound();
         }
@@ -134,16 +132,22 @@ function startRealTimeListeners() {
 
         globalOrders = newOrders;
         refreshUI();
+    }, error => {
+        console.error("Orders listener error:", error);
     });
 
     db.collection("products").onSnapshot(snapshot => {
         globalProducts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         refreshUI();
+    }, error => {
+        console.error("Products listener error:", error);
     });
 
     db.collection("deliveryPartners").onSnapshot(snapshot => {
         globalPartners = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         loadDeliveryPartners();
+    }, error => {
+        console.error("Partners listener error:", error);
     });
 }
 
@@ -152,6 +156,7 @@ function refreshUI() {
     loadOrders();
     loadHistory();
     loadProducts();
+    loadDeliveryPartners();
 }
 
 function updateDate() {
@@ -197,7 +202,7 @@ function showSectionByName(section) {
 }
 
 // =====================================================
-// DASHBOARD
+// DASHBOARD & ANALYTICS
 // =====================================================
 function loadDashboard() {
     const totalOrders = globalOrders.length;
@@ -206,16 +211,21 @@ function loadDashboard() {
     
     const revenue = globalOrders
         .filter(o => o.status === "Delivered")
-        .reduce((total, order) => total + Number(order.total), 0);
+        .reduce((total, order) => total + Number(order.total || 0), 0);
 
-    document.getElementById("totalOrders").textContent = totalOrders;
-    document.getElementById("pendingOrders").textContent = pendingOrders;
-    document.getElementById("completedOrders").textContent = completedOrders;
-    document.getElementById("totalRevenue").textContent = "₹" + revenue;
-    document.getElementById("sidebarPending").textContent = pendingOrders;
+    const totEl = document.getElementById("totalOrders");
+    const penEl = document.getElementById("pendingOrders");
+    const comEl = document.getElementById("completedOrders");
+    const revEl = document.getElementById("totalRevenue");
+    const sidePenEl = document.getElementById("sidebarPending");
+
+    if (totEl) totEl.textContent = totalOrders;
+    if (penEl) penEl.textContent = pendingOrders;
+    if (comEl) comEl.textContent = completedOrders;
+    if (revEl) revEl.textContent = "₹" + revenue;
+    if (sidePenEl) sidePenEl.textContent = pendingOrders;
 
     loadRecentOrders();
-    // <-- ITEM SALES REPORT CALCULATION
 }
 
 function loadTopSellingItems() {
@@ -232,7 +242,7 @@ function loadTopSellingItems() {
                     itemMap[item.name] = { count: 0, revenue: 0 };
                 }
                 itemMap[item.name].count += Number(item.quantity || 1);
-                itemMap[item.name].revenue += Number(item.price * (item.quantity || 1));
+                itemMap[item.name].revenue += Number((item.price || 0) * (item.quantity || 1));
             });
         }
     });
@@ -269,6 +279,7 @@ function loadTopSellingItems() {
         </div>
     `;
 }
+
 function loadRecentOrders() {
     const container = document.getElementById("recentOrders");
     if (!container) return;
@@ -313,31 +324,6 @@ function loadRecentOrders() {
     }).join("");
 }
 
-function createOrderCard(order) {
-    const itemsText = order.items.map(item => `${item.name} × ${item.quantity}`).join(", ");
-    
-    let orderTime = "Recently";
-    if (order.createdAt && order.createdAt.seconds) {
-        const d = new Date(order.createdAt.seconds * 1000);
-        orderTime = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ", " + 
-                    d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
-    }
-
-    return `
-        <div class="order-row">
-            <div class="order-main">
-                <div class="order-number">#${order.orderNumber}</div>
-                <div>
-                    <h3>${escapeHTML(order.customerName)} <small style="color:#888; font-weight:normal; font-size:12px;">(${orderTime})</small></h3>
-                    <p>${itemsText}</p>
-                </div>
-            </div>
-            <div class="order-price">₹${order.total}</div>
-            <span class="order-status ${getStatusClass(order.status)}">${order.status}</span>
-            <button class="view-btn" onclick="viewOrder('${order.id}')">View</button>
-        </div>
-    `;
-}
 // =====================================================
 // ORDER MANAGEMENT
 // =====================================================
@@ -366,7 +352,6 @@ function loadOrders() {
         return `
         <div class="detailed-order" style="background:#fff; padding:18px; margin-bottom:15px; border-radius:10px; border:1px solid #e0e0e0; box-shadow: 0 2px 8px rgba(0,0,0,0.03);">
             
-            <!-- HEADER -->
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; border-bottom:1px solid #f0f0f0; padding-bottom:10px;">
                 <div>
                     <span style="font-weight:bold; color:#ff4d00; font-size:16px;">#${order.orderNumber}</span> 
@@ -379,23 +364,19 @@ function loadOrders() {
                 </div>
             </div>
 
-            <!-- INFO GRID -->
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px; font-size:13px; color:#444; margin-bottom:15px; background:#fafafa; padding:10px; border-radius:6px;">
                 <p>📞 <strong>Phone:</strong> <a href="tel:${order.phone}" style="color:inherit; text-decoration:none;">${escapeHTML(order.phone)}</a></p>
                 <p>📍 <strong>Address:</strong> ${escapeHTML(order.address)}</p>
                 <p>🚴 <strong>Partner:</strong> ${escapeHTML(order.assignedPartner || "Not Assigned")}</p>
             </div>
 
-            <!-- ACTION BAR WITH RECEIPT BUTTON -->
             <div style="display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; border-top:1px solid #f0f0f0; padding-top:12px;">
                 
-                <!-- Assign Partner Dropdown -->
                 <select onchange="assignOrderPartner('${order.id}', this.value)" style="padding: 7px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; background:#fff;">
                     <option value="">-- Assign Partner --</option>
                     ${partnerOptions}
                 </select>
 
-                <!-- Accept Button -->
                 ${order.status === "Pending" ? `
                     <button onclick="updateOrderStatus('${order.id}', 'Accepted')" style="background:#27ae60; color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-weight:600; font-size:13px;">
                         ✓ Accept
@@ -404,12 +385,10 @@ function loadOrders() {
                     <span style="color:#27ae60; font-weight:600; font-size:12px; background:#e8f8f0; padding:6px 10px; border-radius:6px;">✓ Accepted</span>
                 `}
 
-                <!-- Dashboard Direct Print Receipt Button -->
                 <button onclick="printThermalReceipt('${order.id}')" style="background:#ff4d00; color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:600; font-size:13px;">
                     🖨️ Receipt
                 </button>
 
-                <!-- Cancel Button -->
                 <button onclick="updateOrderStatus('${order.id}', 'Cancelled')" style="background:#fff; color:#c0392b; border:1px solid #c0392b; padding:7px 12px; border-radius:6px; cursor:pointer; font-weight:600; font-size:13px;">
                     Cancel
                 </button>
@@ -439,7 +418,7 @@ async function updateOrderStatus(orderId, newStatus) {
 }
 
 // =====================================================
-// ORDER HISTORY & DATE FILTERING WITH SEARCH
+// ORDER HISTORY & DATE FILTERING
 // =====================================================
 let selectedHistoryDate = "";
 let searchQuery = "";
@@ -466,12 +445,10 @@ function resetDateFilter() {
 }
 
 function loadHistory() {
-    // Delivered aur Cancelled orders fetch karo
     let history = globalOrders.filter(o => 
         o.status && (o.status.toLowerCase() === "delivered" || o.status.toLowerCase() === "cancelled")
     );
 
-    // Search Filter (Phone, Customer Name, Order Number)
     if (searchQuery) {
         history = history.filter(o => 
             (o.customerName && o.customerName.toLowerCase().includes(searchQuery)) ||
@@ -480,7 +457,6 @@ function loadHistory() {
         );
     }
 
-    // Date Filter
     if (selectedHistoryDate) {
         history = history.filter(o => {
             if (o.createdAt && o.createdAt.seconds) {
@@ -494,7 +470,6 @@ function loadHistory() {
         });
     }
 
-    // Filtered Date/Search ki Stats Calculate karo
     const count = history.length;
     const revenue = history
         .filter(o => o.status.toLowerCase() === "delivered")
@@ -557,6 +532,15 @@ function loadHistory() {
     `;
 }
 
+async function deleteHistoryOrder(orderId) {
+    if (!confirm("Are you sure you want to delete this order from history?")) return;
+    try {
+        await db.collection("orders").doc(orderId).delete();
+    } catch (e) {
+        console.error("Error deleting order:", e);
+    }
+}
+
 // =====================================================
 // VIEW ORDER MODAL
 // =====================================================
@@ -565,6 +549,8 @@ function viewOrder(orderId) {
     if (!order) return;
 
     const container = document.getElementById("orderDetails");
+    if (!container) return;
+
     container.innerHTML = `
         <div class="modal-order-header">
             <p>ORDER</p>
@@ -580,10 +566,10 @@ function viewOrder(orderId) {
         </div>
         <div class="modal-section">
             <h3>Order Items</h3>
-            ${order.items.map(item => `
+            ${(order.items || []).map(item => `
                 <div class="modal-item">
                     <span>${escapeHTML(item.name)} × ${item.quantity}</span>
-                    <strong>₹${item.price * item.quantity}</strong>
+                    <strong>₹${(item.price || 0) * (item.quantity || 1)}</strong>
                 </div>
             `).join("")}
             <div class="modal-total">
@@ -604,20 +590,19 @@ function closeOrderModal() {
 }
 
 // =====================================================
-// MENU MANAGEMENT (WITH CATEGORY FILTER & EDIT MODAL)
+// MENU MANAGEMENT
 // =====================================================
 function filterAdminMenu(category, btn) {
     selectedAdminCategory = category;
-    
-    // Highlight active filter button
-    const buttons = btn.parentElement.querySelectorAll("button");
-    buttons.forEach(b => {
-        b.style.background = "#eee";
-        b.style.color = "#333";
-    });
-    btn.style.background = "#ff4d00";
-    btn.style.color = "#fff";
-
+    if (btn && btn.parentElement) {
+        const buttons = btn.parentElement.querySelectorAll("button");
+        buttons.forEach(b => {
+            b.style.background = "#eee";
+            b.style.color = "#333";
+        });
+        btn.style.background = "#ff4d00";
+        btn.style.color = "#fff";
+    }
     loadProducts();
 }
 
@@ -648,7 +633,7 @@ function createProductCard(product) {
             <div class="product-admin-info">
                 <div class="product-category">${product.category}</div>
                 <h3>${escapeHTML(product.name)}</h3>
-                <p>${escapeHTML(product.description)}</p>
+                <p>${escapeHTML(product.description || "")}</p>
                 <strong class="product-price">₹${product.price}</strong>
                 <div class="product-status-row">
                     <button class="availability-btn ${product.available ? "available" : "unavailable"}" 
@@ -686,8 +671,10 @@ async function addProduct() {
     }
 
     const btn = document.querySelector(".add-product-card .primary-btn");
-    btn.textContent = "Uploading Item...";
-    btn.disabled = true;
+    if (btn) {
+        btn.textContent = "Uploading Item...";
+        btn.disabled = true;
+    }
 
     const reader = new FileReader();
     reader.onloadend = async function() {
@@ -708,14 +695,15 @@ async function addProduct() {
         } catch (error) {
             console.error("Error adding product:", error);
         } finally {
-            btn.textContent = "+ Add Food Item";
-            btn.disabled = false;
+            if (btn) {
+                btn.textContent = "+ Add Food Item";
+                btn.disabled = false;
+            }
         }
     };
     reader.readAsDataURL(file);
 }
 
-// EDIT PRODUCT MODAL LOGIC (NO PROMPTS, INCLUDES IMAGE CHANGE)
 function openEditProductModal(productId) {
     const product = globalProducts.find(p => p.id === productId);
     if (!product) return;
@@ -748,8 +736,10 @@ async function saveProductEdit() {
     }
 
     const saveBtn = document.getElementById("saveEditBtn");
-    saveBtn.textContent = "Saving...";
-    saveBtn.disabled = true;
+    if (saveBtn) {
+        saveBtn.textContent = "Saving...";
+        saveBtn.disabled = true;
+    }
 
     try {
         const updateData = {
@@ -765,20 +755,26 @@ async function saveProductEdit() {
                 updateData.image = reader.result;
                 await db.collection("products").doc(productId).update(updateData);
                 closeEditProductModal();
-                saveBtn.textContent = "Save Changes";
-                saveBtn.disabled = false;
+                if (saveBtn) {
+                    saveBtn.textContent = "Save Changes";
+                    saveBtn.disabled = false;
+                }
             };
             reader.readAsDataURL(file);
         } else {
             await db.collection("products").doc(productId).update(updateData);
             closeEditProductModal();
-            saveBtn.textContent = "Save Changes";
-            saveBtn.disabled = false;
+            if (saveBtn) {
+                saveBtn.textContent = "Save Changes";
+                saveBtn.disabled = false;
+            }
         }
     } catch (error) {
         console.error("Error updating product:", error);
-        saveBtn.textContent = "Save Changes";
-        saveBtn.disabled = false;
+        if (saveBtn) {
+            saveBtn.textContent = "Save Changes";
+            saveBtn.disabled = false;
+        }
     }
 }
 
@@ -792,8 +788,54 @@ async function deleteProduct(productId) {
 }
 
 // =====================================================
-// SECURE DELIVERY PARTNER CREATION (FIREBASE AUTH)
+// DELIVERY PARTNERS FLEET
 // =====================================================
+function loadDeliveryPartners() {
+    const container = document.getElementById("partnersContainer");
+    if (!container) return;
+
+    if (globalPartners.length === 0) {
+        container.innerHTML = `<p class="empty-text">No delivery partners added yet.</p>`;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="history-table-wrapper">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Partner Name</th>
+                        <th>Phone</th>
+                        <th>Email (Login)</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${globalPartners.map(partner => `
+                        <tr>
+                            <td><strong>${escapeHTML(partner.name)}</strong></td>
+                            <td>${escapeHTML(partner.phone)}</td>
+                            <td>${escapeHTML(partner.email)}</td>
+                            <td>
+                                <button class="delete-btn" onclick="deletePartner('${partner.id}')">Remove</button>
+                            </td>
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+async function deletePartner(partnerId) {
+    if (!confirm("Are you sure you want to remove this delivery partner?")) return;
+    try {
+        await db.collection("deliveryPartners").doc(partnerId).delete();
+    } catch (error) {
+        console.error("Error deleting partner:", error);
+    }
+}
+
 async function addDeliveryPartner() {
     const name = document.getElementById("partnerName").value.trim();
     const phone = document.getElementById("partnerPhone").value.trim();
@@ -810,15 +852,12 @@ async function addDeliveryPartner() {
     const email = `${phone}@zaikaroll.com`;
 
     try {
-        // Admin session kharab kiye bina secondary instance se Auth user banana
         const tempApp = firebase.initializeApp(firebaseConfig, "TempAuthApp");
         const tempAuth = tempApp.auth();
 
-        // 1. Firebase Auth mein official user account create karein
         const userCredential = await tempAuth.createUserWithEmailAndPassword(email, password);
         const uid = userCredential.user.uid;
 
-        // 2. Firestore mein BINA PLAINTEXT PASSWORD ke details store karein
         await db.collection("deliveryPartners").doc(uid).set({
             uid: uid,
             name: name,
@@ -827,9 +866,7 @@ async function addDeliveryPartner() {
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
-        // Temp App cleanup
         await tempApp.delete();
-
         alert(`✓ Delivery Partner '${name}' successfully created!`);
 
         document.getElementById("partnerName").value = "";
@@ -845,11 +882,12 @@ async function addDeliveryPartner() {
         }
     }
 }
+
 // =====================================================
 // UTILS
 // =====================================================
 function getStatusClass(status) {
-    return status.toLowerCase().replace(/ /g, "-");
+    return (status || "pending").toLowerCase().replace(/ /g, "-");
 }
 
 function escapeHTML(text) {
@@ -857,8 +895,6 @@ function escapeHTML(text) {
     div.textContent = text ?? "";
     return div.innerHTML;
 }
-
-
 
 // =====================================================
 // CHANGE PASSWORD LOGIC
@@ -917,11 +953,8 @@ async function submitChangePassword() {
     saveBtn.disabled = true;
 
     try {
-        // Step 1: Current password verify karne ke liye Re-authenticate karo
         const credential = firebase.auth.EmailAuthProvider.credential(user.email, currentPassword);
         await user.reauthenticateWithCredential(credential);
-
-        // Step 2: Firebase Auth par naya password update karo
         await user.updatePassword(newPassword);
 
         successEl.textContent = "✓ Password updated successfully!";
@@ -945,7 +978,6 @@ async function submitChangePassword() {
     }
 }
 
-
 // =====================================================
 // THERMAL RECEIPT / KOT PRINT
 // =====================================================
@@ -954,11 +986,11 @@ function printThermalReceipt(orderId) {
     if (!order) return;
 
     const printWindow = window.open("", "_blank", "width=350,height=600");
-    const itemsHTML = order.items.map(item => `
+    const itemsHTML = (order.items || []).map(item => `
         <tr>
             <td style="padding:4px 0;">${escapeHTML(item.name)}</td>
             <td style="padding:4px 0; text-align:center;">x${item.quantity}</td>
-            <td style="padding:4px 0; text-align:right;">₹${item.price * item.quantity}</td>
+            <td style="padding:4px 0; text-align:right;">₹${(item.price || 0) * (item.quantity || 1)}</td>
         </tr>
     `).join("");
 
@@ -1011,7 +1043,6 @@ function printThermalReceipt(orderId) {
     printWindow.document.close();
 }
 
-
 // =====================================================
 // ANALYTICS MODAL CONTROLS
 // =====================================================
@@ -1023,8 +1054,3 @@ function openAnalyticsModal() {
 function closeAnalyticsModal() {
     document.getElementById("analyticsModal").style.display = "none";
 }
-
-// =====================================================
-// START APP
-// =====================================================
-checkAdminLogin();
